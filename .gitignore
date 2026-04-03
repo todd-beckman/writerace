@@ -5,6 +5,7 @@ server/server
 server/*.exe
 server/*.test
 server/vendor/
+server/writerace
 
 # Node / web
 web/node_modules/

@@ -263,13 +263,24 @@ function renderLobby(): void {
   `);
 
   _container!.querySelector('#copy-btn')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(url).then(() => {
-      const btn = _container?.querySelector<HTMLButtonElement>('#copy-btn');
+    const btn = _container?.querySelector<HTMLButtonElement>('#copy-btn');
+    const markCopied = () => {
       if (btn) {
         btn.textContent = 'Copied!';
         setTimeout(() => { if (btn) btn.textContent = 'Copy'; }, 2000);
       }
-    });
+    };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(markCopied);
+    } else {
+      const input = document.createElement('input');
+      input.value = url;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      markCopied();
+    }
   });
 
   _container!.querySelector('#start-btn')?.addEventListener('click', () => {

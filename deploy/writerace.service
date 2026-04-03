@@ -1,0 +1,15 @@
+[Unit]
+Description=WriteRace server
+After=network.target
+
+[Service]
+Type=simple
+User=writerace
+Group=writerace
+ExecStart=/usr/local/bin/writerace
+Environment=PORT=8080
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

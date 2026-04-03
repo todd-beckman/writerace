@@ -1,0 +1,25 @@
+# Plans
+
+# Go
+server/server
+server/*.exe
+server/*.test
+server/vendor/
+
+# Node / web
+web/node_modules/
+web/dist/
+
+# Lock files
+package-lock.json
+go.sum
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

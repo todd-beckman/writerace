@@ -72,9 +72,13 @@ docker run -p 8080:8080 writerace
 
 ## Testing
 
-**Unit tests** (no external dependencies, runs quickly):
+**Go unit tests** (no external dependencies, runs quickly):
 
     make unit-go
+
+**Frontend unit tests** (requires `npm install` in `web/` first):
+
+    make unit-web
 
 **Integration tests** (starts a real HTTP server in-process, tests WebSocket flows):
 

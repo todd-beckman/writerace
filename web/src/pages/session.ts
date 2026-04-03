@@ -3,11 +3,9 @@ import { saveSession, loadSession } from '../storage';
 import { getStoredParticipant, setStoredParticipant, getLastUsername } from '../participant-store';
 import { createSession } from '../api';
 import { createWSManager } from '../ws';
-import { countWords, fixQuotes } from '../utils';
+import { countWords, fixQuotes, escHtml, escAttr, sortParticipants, validateUsername } from '../utils';
 import type { WSManager } from '../ws';
 import type { ServerSession, ServerParticipant, ServerMessage } from '../types';
-
-const USERNAME_RE = /^[a-zA-Z0-9_-]+$/;
 
 type PageState = 'joining' | 'username-prompt' | 'lobby' | 'countdown' | 'active' | 'ended';
 
@@ -206,12 +204,9 @@ function renderUsernamePrompt(): void {
     const err = form.querySelector<HTMLElement>('#username-error')!;
     const username = input.value.trim();
 
-    if (!username) {
-      err.textContent = 'Username is required.';
-      return;
-    }
-    if (!USERNAME_RE.test(username)) {
-      err.textContent = 'Only letters, numbers, underscores, and hyphens are allowed.';
+    const usernameError = validateUsername(username);
+    if (usernameError) {
+      err.textContent = usernameError;
       return;
     }
     err.textContent = '';
@@ -331,6 +326,7 @@ function enterActive(): void {
     </div>
     <textarea id="writing-area"></textarea>
     <div class="btn-row" style="margin-top:12px">
+      <button class="btn-secondary btn-sm" id="copy-writing-btn">Copy</button>
       <button class="btn-secondary btn-sm" id="fix-quotes-btn">Fix Quotes</button>
       <button class="btn-danger btn-sm" id="end-btn">End Session</button>
     </div>
@@ -340,6 +336,10 @@ function enterActive(): void {
   textarea.value = _writing;
   textarea.addEventListener('input', onTextareaInput);
   textarea.focus();
+
+  _container!.querySelector('#copy-writing-btn')?.addEventListener('click', () => {
+    copyToClipboard(_writing, _container!.querySelector<HTMLButtonElement>('#copy-writing-btn'));
+  });
 
   _container!.querySelector('#fix-quotes-btn')?.addEventListener('click', () => {
     const fixed = fixQuotes(_writing);
@@ -407,6 +407,7 @@ function renderEnded(): void {
     ${_writing ? `
       <div class="ended-writing-wrap">
         <div class="btn-row" style="margin-bottom:8px">
+          <button class="btn-secondary btn-sm" id="copy-ended-writing-btn">Copy</button>
           <button class="btn-secondary btn-sm" id="fix-quotes-ended-btn">Fix Quotes</button>
         </div>
         <textarea id="ended-writing-area">${escHtml(_writing)}</textarea>
@@ -431,6 +432,10 @@ function renderEnded(): void {
       persistWriting();
     });
   }
+
+  _container!.querySelector('#copy-ended-writing-btn')?.addEventListener('click', () => {
+    copyToClipboard(_writing, _container!.querySelector<HTMLButtonElement>('#copy-ended-writing-btn'));
+  });
 
   _container!.querySelector('#fix-quotes-ended-btn')?.addEventListener('click', () => {
     if (!endedTextarea) return;
@@ -561,17 +566,6 @@ function reorderParticipantList(): void {
   }
 }
 
-/** Sort: finishers ascending by finishOrder, then non-finishers by joinOrder. */
-function sortParticipants(participants: ServerParticipant[]): ServerParticipant[] {
-  return [...participants].sort((a, b) => {
-    const aFinished = a.finishOrder > 0;
-    const bFinished = b.finishOrder > 0;
-    if (aFinished && bFinished) return a.finishOrder - b.finishOrder;
-    if (aFinished) return -1;
-    if (bFinished) return 1;
-    return a.joinOrder - b.joinOrder;
-  });
-}
 
 function onTextareaInput(e: Event): void {
   _writing = (e.target as HTMLTextAreaElement).value;
@@ -631,10 +625,22 @@ function setHTML(html: string): void {
   if (_container) _container.innerHTML = html;
 }
 
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function copyToClipboard(text: string, button: HTMLButtonElement | null): void {
+  const markCopied = () => {
+    if (!button) return;
+    button.textContent = 'Copied!';
+    setTimeout(() => { if (button) button.textContent = 'Copy'; }, 2000);
+  };
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(markCopied);
+  } else {
+    const input = document.createElement('input');
+    input.value = text;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    markCopied();
+  }
 }
 
-function escAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}

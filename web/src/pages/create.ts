@@ -1,8 +1,7 @@
 import { navigate } from '../nav';
 import { createSession } from '../api';
 import { setStoredParticipant, getLastUsername } from '../participant-store';
-
-const USERNAME_RE = /^[a-zA-Z0-9_-]+$/;
+import { escAttr, validateUsername } from '../utils';
 
 let _teardownFn: (() => void) | null = null;
 
@@ -70,12 +69,9 @@ export function mount(container: HTMLElement, params: URLSearchParams): void {
     let valid = true;
 
     const username = usernameInput.value.trim();
-    if (!username) {
-      usernameError.textContent = 'Username is required.';
-      valid = false;
-    } else if (!USERNAME_RE.test(username)) {
-      usernameError.textContent =
-        'Only letters, numbers, underscores, and hyphens are allowed.';
+    const usernameErr = validateUsername(username);
+    if (usernameErr) {
+      usernameError.textContent = usernameErr;
       valid = false;
     } else {
       usernameError.textContent = '';
@@ -116,6 +112,3 @@ export function teardown(): void {
   _teardownFn = null;
 }
 
-function escAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}

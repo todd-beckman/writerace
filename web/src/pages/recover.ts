@@ -1,5 +1,5 @@
 import { clearAllSessions, deleteSession, listSessions, saveSession } from '../storage';
-import { countWords, fixQuotes, formatDate } from '../utils';
+import { countWords, fixQuotes, formatDate, escHtml } from '../utils';
 
 const PAGE_SIZE = 10;
 
@@ -70,6 +70,7 @@ function render(container: HTMLElement, state: State): void {
             </div>
             <div class="session-card-body${bodyClass}">${bodyText}</div>
             <div class="session-card-actions">
+              ${hasWriting ? '<button class="btn-sm copy-writing-btn">Copy</button>' : ''}
               ${hasWriting ? '<button class="btn-sm filter-btn fix-quotes-btn">Fix Quotes</button>' : ''}
               <button class="btn-danger btn-sm delete-session-btn">Delete</button>
             </div>
@@ -106,6 +107,31 @@ function render(container: HTMLElement, state: State): void {
   container.querySelectorAll<HTMLButtonElement>('.filter-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       render(container, { filter: btn.dataset.filter as Filter, page: 0 });
+    });
+  });
+
+  container.querySelectorAll<HTMLButtonElement>('.copy-writing-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest<HTMLElement>('[data-session-id]');
+      const sessionId = card?.dataset.sessionId;
+      if (!sessionId) return;
+      const record = allSessions.find((s) => s.id === sessionId);
+      if (!record) return;
+      const markCopied = () => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+      };
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(record.writing).then(markCopied);
+      } else {
+        const input = document.createElement('input');
+        input.value = record.writing;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        markCopied();
+      }
     });
   });
 
@@ -155,9 +181,3 @@ function render(container: HTMLElement, state: State): void {
   });
 }
 
-function escHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}

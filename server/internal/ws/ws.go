@@ -130,20 +130,16 @@ func readPump(conn *websocket.Conn, sendCh chan []byte, currentSession *session.
 		// conn.Close() is intentionally omitted — the writePump closes the
 		// connection after draining sendCh.
 		currentSession.Disconnect(participant.ID)
-
-		if currentSession.EndIfHostLeft(participant) {
-			currentSession.Broadcast(message.Build("session_ended", nil))
-		} else {
-			currentSession.BroadcastExcept(message.BuildParticipantUpdated(session.ParticipantView{
-				ID:          participant.ID,
-				Username:    participant.Username,
-				WordCount:   participant.WordCount,
-				Connected:   false,
-				Completed:   participant.Completed,
-				JoinOrder:   participant.JoinOrder,
-				FinishOrder: participant.FinishOrder,
-			}), participant.ID)
-		}
+		currentSession.EndIfHostLeft(participant)
+		currentSession.BroadcastExcept(message.BuildParticipantUpdated(session.ParticipantView{
+			ID:          participant.ID,
+			Username:    participant.Username,
+			WordCount:   participant.WordCount,
+			Connected:   false,
+			Completed:   participant.Completed,
+			JoinOrder:   participant.JoinOrder,
+			FinishOrder: participant.FinishOrder,
+		}), participant.ID)
 	}()
 
 	conn.SetReadLimit(maxMessageSize)

@@ -1,3 +1,5 @@
+import type { ServerParticipant } from './types';
+
 /**
  * Replace straight quotation marks with their typographic (curly) equivalents.
  *
@@ -43,4 +45,37 @@ export function formatDate(timestamp: number): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+export function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function escAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/** Sort: finishers ascending by finishOrder, then non-finishers by joinOrder. */
+export function sortParticipants(participants: ServerParticipant[]): ServerParticipant[] {
+  return [...participants].sort((a, b) => {
+    const aFinished = a.finishOrder > 0;
+    const bFinished = b.finishOrder > 0;
+    if (aFinished && bFinished) return a.finishOrder - b.finishOrder;
+    if (aFinished) return -1;
+    if (bFinished) return 1;
+    return a.joinOrder - b.joinOrder;
+  });
+}
+
+const USERNAME_RE = /^[a-zA-Z0-9 _-]+$/;
+
+/**
+ * Validates a username value. Trims whitespace before checking.
+ * Returns an error message string if invalid, or null if valid.
+ */
+export function validateUsername(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return 'Username is required.';
+  if (!USERNAME_RE.test(trimmed)) return 'Only letters, numbers, spaces, underscores, and hyphens are allowed.';
+  return null;
 }

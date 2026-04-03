@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func newTestSession(goal int, status Status) *Session {
@@ -488,75 +489,112 @@ func assertNotReceived(t *testing.T, ch chan []byte, label string) {
 }
 
 func TestEndIfHostLeft(t *testing.T) {
-	t.Run("ends session and returns true when host disconnects from waiting session", func(t *testing.T) {
-		session := newTestSession(100, StatusWaiting)
-		host := addTestParticipant(t, session, "alice")
+	t.Run("schedules session end when host disconnects from waiting session", func(t *testing.T) {
+		original := staleHostTimeout
+		staleHostTimeout = 20 * time.Millisecond
+		defer func() { staleHostTimeout = original }()
+
+		s := newTestSession(100, StatusWaiting)
+		host := addTestParticipant(t, s, "alice")
 		guestCh := makeSendCh()
-		addTestParticipant(t, session, "bob")
-		// Manually set guest sendCh so broadcast can reach bob.
-		session.mu.Lock()
-		for _, participant := range session.participants {
-			if participant.Username == "bob" {
-				participant.sendCh = guestCh
+		addTestParticipant(t, s, "bob")
+		s.mu.Lock()
+		for _, p := range s.participants {
+			if p.Username == "bob" {
+				p.sendCh = guestCh
 			}
 		}
-		session.mu.Unlock()
+		s.mu.Unlock()
 
-		ended := session.EndIfHostLeft(host)
+		s.EndIfHostLeft(host)
 
-		if !ended {
-			t.Error("EndIfHostLeft should return true for host in waiting session")
-		}
-		if session.Status != StatusEnded {
-			t.Errorf("Status = %q, want %q", session.Status, StatusEnded)
-		}
-		select {
-		case <-session.doneCh:
-			// expected
-		default:
-			t.Error("doneCh should be closed after end")
+		// Session must not be ended immediately.
+		if s.Status == StatusEnded {
+			t.Error("session should not be ended immediately after EndIfHostLeft")
 		}
 
-		// Simulate the broadcast that ws.go performs after EndIfHostLeft returns true.
-		session.Broadcast([]byte(`{"type":"session_ended"}`))
+		// After the timeout, the session should end and broadcast session_ended.
 		select {
 		case msg := <-guestCh:
 			var parsed map[string]any
 			if err := json.Unmarshal(msg, &parsed); err != nil {
-				t.Fatalf("invalid JSON: %v", err)
+				t.Fatalf("invalid JSON from timer broadcast: %v", err)
 			}
 			if parsed["type"] != "session_ended" {
-				t.Errorf("type = %q, want session_ended", parsed["type"])
+				t.Errorf("broadcast type = %q, want session_ended", parsed["type"])
 			}
+		case <-time.After(500 * time.Millisecond):
+			t.Error("expected session_ended broadcast after stale-host timeout")
+		}
+
+		if s.Status != StatusEnded {
+			t.Errorf("Status = %q after timer, want %q", s.Status, StatusEnded)
+		}
+	})
+
+	t.Run("cancels timer when host reconnects", func(t *testing.T) {
+		original := staleHostTimeout
+		staleHostTimeout = 50 * time.Millisecond
+		defer func() { staleHostTimeout = original }()
+
+		s := newTestSession(100, StatusWaiting)
+		host := addTestParticipant(t, s, "alice")
+		guestCh := makeSendCh()
+		addTestParticipant(t, s, "bob")
+		s.mu.Lock()
+		for _, p := range s.participants {
+			if p.Username == "bob" {
+				p.sendCh = guestCh
+			}
+		}
+		s.mu.Unlock()
+
+		s.Disconnect(host.ID)
+		s.EndIfHostLeft(host)
+
+		// Host reconnects before the timer fires.
+		if _, err := s.Reconnect(host.ID, makeSendCh()); err != nil {
+			t.Fatalf("Reconnect: %v", err)
+		}
+
+		// Wait long enough that the timer would have fired if not cancelled.
+		time.Sleep(200 * time.Millisecond)
+
+		if s.Status == StatusEnded {
+			t.Error("session should not end when host reconnects before timeout")
+		}
+		select {
+		case msg := <-guestCh:
+			t.Errorf("unexpected message after host reconnect: %s", msg)
 		default:
-			t.Error("guest should have received session_ended")
+			// expected: no session_ended broadcast
 		}
 	})
 
-	t.Run("returns false and does not end session for non-host participant", func(t *testing.T) {
-		session := newTestSession(100, StatusWaiting)
-		addTestParticipant(t, session, "alice") // host
-		guest := addTestParticipant(t, session, "bob")
+	t.Run("does not schedule end for non-host participant", func(t *testing.T) {
+		s := newTestSession(100, StatusWaiting)
+		addTestParticipant(t, s, "alice") // host
+		guest := addTestParticipant(t, s, "bob")
 
-		ended := session.EndIfHostLeft(guest)
+		s.EndIfHostLeft(guest)
 
-		if ended {
-			t.Error("EndIfHostLeft should return false for non-host participant")
+		if s.hostDisconnectTimer != nil {
+			t.Error("hostDisconnectTimer should not be set for a non-host disconnect")
 		}
-		if session.Status != StatusWaiting {
-			t.Errorf("Status = %q, want waiting", session.Status)
+		if s.Status != StatusWaiting {
+			t.Errorf("Status = %q, want waiting", s.Status)
 		}
 	})
 
-	t.Run("returns false when session is already active", func(t *testing.T) {
-		session := newTestSession(100, StatusWaiting)
-		host := addTestParticipant(t, session, "alice")
-		session.Start()
+	t.Run("does not schedule end when session is already active", func(t *testing.T) {
+		s := newTestSession(100, StatusWaiting)
+		host := addTestParticipant(t, s, "alice")
+		s.Start()
 
-		ended := session.EndIfHostLeft(host)
+		s.EndIfHostLeft(host)
 
-		if ended {
-			t.Error("EndIfHostLeft should return false when session is active")
+		if s.hostDisconnectTimer != nil {
+			t.Error("hostDisconnectTimer should not be set for an active session")
 		}
 	})
 }

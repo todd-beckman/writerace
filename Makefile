@@ -6,11 +6,13 @@ unit-go:
 integration-test:
 	cd server && go test -tags=integration -race -v -count=1 ./...
 
-test-all: unit-go integration-test
+unit-web:
+	cd web && npm test
+
+test-all: unit-go unit-web integration-test
 
 fix:
 	cd server && go fix ./...
-
 
 run-service:
 	cd server && go run .

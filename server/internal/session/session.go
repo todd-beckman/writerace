@@ -13,6 +13,10 @@ const (
 	redirectWindow  = 30 * time.Second
 )
 
+// staleHostTimeout is how long to wait after the host disconnects from a
+// waiting session before ending it. A var so tests can override it.
+var staleHostTimeout = 5 * time.Minute
+
 // Status represents the lifecycle state of a session.
 type Status string
 
@@ -69,6 +73,10 @@ type Session struct {
 
 	doneCh   chan struct{}
 	doneOnce sync.Once
+
+	// hostDisconnectTimer fires staleHostTimeout after the host disconnects
+	// from a waiting session. Cancelled if the host reconnects in time.
+	hostDisconnectTimer *time.Timer
 
 	mu sync.Mutex
 }
@@ -160,6 +168,11 @@ func (s *Session) Reconnect(participantID string, sendCh chan []byte) (*Particip
 	if s.Status == StatusEnded {
 		return nil, errors.New("session has ended")
 	}
+	// If the host is reconnecting, cancel the pending stale-host timer.
+	if p.JoinOrder == 1 && s.hostDisconnectTimer != nil {
+		s.hostDisconnectTimer.Stop()
+		s.hostDisconnectTimer = nil
+	}
 	p.Connected = true
 	p.sendCh = sendCh
 	return p, nil
@@ -201,18 +214,23 @@ func (s *Session) Start() bool {
 	return true
 }
 
-// EndIfHostLeft ends the session if p is the host and the session is still
-// waiting. Returns true if the session was ended. Does NOT broadcast.
-func (s *Session) EndIfHostLeft(p *Participant) bool {
+// EndIfHostLeft schedules the session to end after staleHostTimeout if p is
+// the host and the session is still in the waiting state. If the host
+// reconnects before the timer fires, Reconnect cancels it. Does NOT broadcast
+// immediately; the timer goroutine broadcasts session_ended when it fires.
+func (s *Session) EndIfHostLeft(p *Participant) {
 	s.mu.Lock()
 	isHost := p.JoinOrder == 1
 	isWaiting := s.Status == StatusWaiting
-	s.mu.Unlock()
-	if isHost && isWaiting {
-		s.End()
-		return true
+	if !isHost || !isWaiting {
+		s.mu.Unlock()
+		return
 	}
-	return false
+	s.hostDisconnectTimer = time.AfterFunc(staleHostTimeout, func() {
+		s.End()
+		s.Broadcast([]byte(`{"type":"session_ended"}`))
+	})
+	s.mu.Unlock()
 }
 
 // End transitions the session to ended. Idempotent.

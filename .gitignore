@@ -1,5 +1,8 @@
 # Plans
 
+# Secrets
+deploy/
+
 # Go
 server/server
 server/*.exe

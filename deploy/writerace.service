@@ -8,7 +8,7 @@ User=writerace
 Group=writerace
 ExecStart=/usr/local/bin/writerace
 Environment=PORT=8080
-Environment=ALLOWED_ORIGIN=http://3.20.239.233:8080
+Environment=ALLOWED_ORIGIN=https://writerace.io
 Restart=on-failure
 RestartSec=5
 
